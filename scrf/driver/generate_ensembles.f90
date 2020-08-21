@@ -605,13 +605,13 @@ program generate_ensembles
            !  //////(dp))) ** transform
            ! end if
             
-            ! limit max value to obs_max_pcp + pcp_error (max station value + some portion of error)
-            ! Hongli changed for box-cox back-transformation
-            if (ra .gt. ((real(obs_max_pcp(isp1, isp2, istep), kind(dp))+0.2*real(pcp_error(isp1, isp2, &
-           & istep), kind(dp)))*(1.0d0/transform)+1)**transform) then
-              ra = ((real(obs_max_pcp(isp1, isp2, istep), kind(dp))+0.2*real(pcp_error(isp1, isp2, istep), &
-             & kind(dp)))*(1.0d0/transform)+1) ** transform
-            end if
+            !! limit max value to obs_max_pcp + pcp_error (max station value + some portion of error)
+            !! Hongli changed for box-cox back-transformation
+            !if (ra .gt. ((real(obs_max_pcp(isp1, isp2, istep), kind(dp))+0.2*real(pcp_error(isp1, isp2, &
+           !& istep), kind(dp)))*(1.0d0/transform)+1)**transform) then
+            !  ra = ((real(obs_max_pcp(isp1, isp2, istep), kind(dp))+0.2*real(pcp_error(isp1, isp2, istep), &
+            ! & kind(dp)))*(1.0d0/transform)+1) ** transform
+            !end if
  
             pcp_out (isp1, isp2, istep) = real (ra, kind(sp))
  
