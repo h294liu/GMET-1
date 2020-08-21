@@ -246,3 +246,105 @@ subroutine logistic_regressionrf (x, y, tx, b)
   ! print *, "Final B = ", B
  
 end subroutine logistic_regressionrf
+
+
+! Hongli add k-fold cross-validation subroutine
+! -----------------------------
+subroutine cross_validation (x, y, w, err)
+  use type
+  implicit none
+ 
+  interface
+    subroutine least_squares (x, y, tx, b)
+      use type
+      real (dp), intent (in) :: x (:, :)
+      real (dp), intent (in) :: y (:)
+      real (dp), intent (in) :: tx (:, :)
+      real (dp), allocatable, intent (out) :: b (:)
+    end subroutine least_squares
+  end interface
+ 
+  real (dp), intent (in) :: x (:, :)                                        ! spatoial attributes of sta_limit stations
+  real (dp), intent (in) :: y (:)                                           ! observations of sta_limit stations
+  real (dp), intent (in) :: w (:, :)                                        ! weights of sta_limit stations
+  real (dp), intent (out) :: err                                            ! mean error of kfold tests 
+ 
+  integer (i4b), parameter :: kfold = 5                                     ! k-fold
+  real (dp), allocatable :: x_train (:, :), y_train (:), w_train (:, :)     ! divide x,y,w into training and test groups
+  real (dp), allocatable :: x_test (:, :), y_test (:), w_test (:, :)        
+  real (dp), allocatable :: tx_train (:, :), twx_train (:, :), b_train (:)  ! intermediate variables of regression
+  real (dp) :: errsum, wgtsum                                               ! error sum and weight sum for one of kfold tests
+  integer (i4b) :: nstns, nvars, ntests, ntrains                            ! number of stations, attributes, test and train samples
+  integer (i4b) :: i, j, k, ctrain, ctest                                   ! variables for loop and count
+    
+  nstns = size (x, 1)                                                       ! total number of stations 
+  nvars = size (x, 2)                                                       ! total number of spatial attributes 
+  ntests = floor(nstns/real (kfold, kind(dp)))                              ! number of stations in the test group
+  ntrains = nstns-ntests                                                    ! number of stations in the training group  
+  err = 0.0                    
+  
+  do k = 1, kfold, 1
+      allocate (x_train(ntrains, nvars))
+      allocate (x_test(ntests, nvars))
+      allocate (y_train(ntrains))
+      allocate (y_test(ntests))
+      allocate (w_train(ntrains, ntrains))
+      allocate (w_test(ntests, ntests))
+      allocate (tx_train(nvars, ntrains))
+      allocate (twx_train(nvars, ntrains))
+      
+      ctrain = 0
+      ctest = 0
+      x_train = 0.0
+      x_test = 0.0
+      y_train = 0.0
+      y_test = 0.0
+      w_train = 0.0
+      w_test = 0.0
+      errsum = 0.0
+      wgtsum = 0.0
+ 
+      ! divide arrays into training and test groups
+      do i = 1, nstns, 1
+          if ( i >= ((k-1)*ntests+1) .AND. i <= (k*ntests) ) then
+              ctest = ctest + 1
+              x_test(ctest, :) = x(i,:)
+              y_test(ctest) = y(i)
+              w_test(ctest, ctest) = w(i, i)              
+          else
+              ctrain = ctrain + 1
+              x_train(ctrain, :) = x(i,:)
+              y_train(ctrain) = y(i)
+              w_train(ctrain, ctrain) = w(i, i)               
+          end if
+      end do ! end i loop 
+                
+      ! estimate regression coefficients with training data
+      tx_train = transpose(x_train)
+      twx_train = matmul(tx_train, w_train)
+      call least_squares(x_train, y_train, twx_train, b_train)
+              
+      ! estimate regression error with test data
+      do j = 1, ntests, 1
+          wgtsum = wgtsum + w_test (j, j)
+          errsum = errsum + (w_test (j, j)*(real (dot_product(x_test(j, :), b_train), kind(sp))-y_test(j))**2)    
+      end do ! end j loop
+      
+      err = err + real ((errsum/wgtsum)**(1.0/2.0), kind(sp))
+       
+      deallocate (x_train)  
+      deallocate (x_test)  
+      deallocate (y_train)  
+      deallocate (y_test)  
+      deallocate (w_train)  
+      deallocate (w_test)  
+      deallocate(tx_train)  
+      deallocate(twx_train)
+      deallocate (b_train)        
+  
+  end do ! end k loop
+  
+  err = err/kfold  
+ 
+end subroutine cross_validation
+

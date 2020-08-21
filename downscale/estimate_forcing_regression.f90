@@ -118,6 +118,7 @@ subroutine estimate_forcing_regression (gen_sta_weights, sta_weight_name, x, z, 
       !integer (i4b), intent (out) :: yp (:)
     !end subroutine normalize_xv
 
+    ! Hongli add
     subroutine max_x (x, smax)
       use type
       real (dp), intent (inout) :: x (:)
@@ -147,6 +148,15 @@ subroutine estimate_forcing_regression (gen_sta_weights, sta_weight_name, x, z, 
       real (dp), allocatable, intent (out) :: b (:)
     end subroutine logistic_regression
 
+    ! Hongli add
+    subroutine cross_validation (x, y, w, err)
+      use type
+      real (dp), intent (in) :: x (:, :)
+      real (dp), intent (in) :: y (:)
+      real (dp), intent (in) :: w (:, :)
+      real (dp), intent (out) :: err 
+    end subroutine cross_validation
+    
     ! added AJN Sept 2013
     subroutine generic_corr (prcp_data, tair_data, lag, window, auto_corr, t_p_corr)
       use type
@@ -236,6 +246,7 @@ subroutine estimate_forcing_regression (gen_sta_weights, sta_weight_name, x, z, 
   logical, allocatable :: stn_miss (:), stn_miss_t (:) ! missing value logical arrays
 
   real (dp) :: errsum, wgtsum, sta_temp
+  real (dp) :: err_cv                                  ! cross-validaiton error. !Hongli add
   real (dp) :: auto_corr_sum, tp_corr_sum
   !real (dp) :: step_mean, step_std, step_std_all, step_min, step_max ! timestep statistics
   real (dp) :: step_max ! timestep statistics !Hongli change
@@ -743,18 +754,24 @@ subroutine estimate_forcing_regression (gen_sta_weights, sta_weight_name, x, z, 
             pcp (g, t) = real (dot_product(z(g, :), b), kind(sp))
             !deallocate (b)  !AWW-seems to be missing !Hongli delete
 
-            wgtsum = 0.0
-            errsum = 0.0
-            ss_tot = 0.0
-            ss_res = 0.0
-            do i = 1, (close_count(g)-1), 1
-              wgtsum = wgtsum + w_pcp_red (i, i)
-              !errsum = errsum + (w_pcp_red(i, i)*(pcp(g, t)-y_red(i))**2)
-              errsum = errsum + (w_pcp_red(i, i)*(real (dot_product(x_red(i, :), b), kind(sp))-y_red(i))**2) ! Hongli add
-            end do
-            deallocate (b)  !Hongli add
+            !wgtsum = 0.0
+            !errsum = 0.0
+            !ss_tot = 0.0
+            !ss_res = 0.0
+            !do i = 1, (close_count(g)-1), 1
+            !  wgtsum = wgtsum + w_pcp_red (i, i)
+            !  !errsum = errsum + (w_pcp_red(i, i)*(pcp(g, t)-y_red(i))**2)
+            !  errsum = errsum + (w_pcp_red(i, i)*(real (dot_product(x_red(i, :), b), kind(sp))-y_red(i))**2) ! Hongli add
+            !end do
 
-            pcperr (g, t) = real ((errsum/wgtsum)**(1.0/2.0), kind(sp))
+            !pcperr (g, t) = real ((errsum/wgtsum)**(1.0/2.0), kind(sp))              
+
+            !Hongli add
+            call cross_validation(x_red, y_red, w_pcp_red, err_cv)
+            pcperr (g, t) = err_cv
+            
+            deallocate (b)  !Hongli add
+            
           end if
 
           ! regression without slope
@@ -771,17 +788,21 @@ subroutine estimate_forcing_regression (gen_sta_weights, sta_weight_name, x, z, 
 
           pcp_2 (g, t) = real (dot_product(z(g, 1:4), b), kind(sp))
 
-          wgtsum = 0.0
-          errsum = 0.0
-          ss_tot = 0.0
-          ss_res = 0.0
-          do i = 1, (close_count(g)-1), 1
-            wgtsum = wgtsum + w_pcp_red (i, i)
-            !errsum = errsum + (w_pcp_red(i, i)*(pcp_2(g, t)-y_red(i))**2)
-            errsum = errsum + (w_pcp_red(i, i)*(real (dot_product(x_red(i, 1:4), b), kind(sp))-y_red(i))**2) ! Hongli
-          end do
+          !wgtsum = 0.0
+          !errsum = 0.0
+          !ss_tot = 0.0
+          !ss_res = 0.0
+          !do i = 1, (close_count(g)-1), 1
+          !  wgtsum = wgtsum + w_pcp_red (i, i)
+          !  !errsum = errsum + (w_pcp_red(i, i)*(pcp_2(g, t)-y_red(i))**2)
+          !  errsum = errsum + (w_pcp_red(i, i)*(real (dot_product(x_red(i, 1:4), b), kind(sp))-y_red(i))**2) ! Hongli
+          !end do
 
-          pcperr_2 (g, t) = real ((errsum/wgtsum)**(1.0/2.0), kind(sp))
+          !pcperr_2 (g, t) = real ((errsum/wgtsum)**(1.0/2.0), kind(sp))
+            
+          !Hongli add
+          call cross_validation(x_red(:, 1:4), y_red, w_pcp_red, err_cv)
+          pcperr_2 (g, t) = err_cv
 
           deallocate (b)
           ! print *,'done precip'
@@ -813,14 +834,18 @@ subroutine estimate_forcing_regression (gen_sta_weights, sta_weight_name, x, z, 
 
           tmean (g, t) = real (dot_product(z(g, :), b), kind(sp))
 
-          errsum = 0.0
-          wgtsum = 0.0
-          do i = 1, (close_count_t(g)-1), 1
-            wgtsum = wgtsum + w_temp_red (i, i)
-            !errsum = errsum + (w_temp_red(i, i)*(tmean(g, t)-y_tmean_red(i))**2)
-            errsum = errsum + (w_temp_red(i, i)*(real (dot_product(x_red_t(i, :), b), kind(sp))-y_tmean_red(i))**2) !Hongli
-          end do
-          tmean_err (g, t) = real ((errsum/wgtsum)**(1.0/2.0), kind(sp))
+          !errsum = 0.0
+          !wgtsum = 0.0
+          !do i = 1, (close_count_t(g)-1), 1
+          !  wgtsum = wgtsum + w_temp_red (i, i)
+          !  !errsum = errsum + (w_temp_red(i, i)*(tmean(g, t)-y_tmean_red(i))**2)
+          !  errsum = errsum + (w_temp_red(i, i)*(real (dot_product(x_red_t(i, :), b), kind(sp))-y_tmean_red(i))**2) !Hongli
+          !end do
+          !tmean_err (g, t) = real ((errsum/wgtsum)**(1.0/2.0), kind(sp))
+          
+          !!Hongli add
+          call cross_validation(x_red_t, y_tmean_red, w_temp_red, err_cv)
+          tmean_err (g, t) = err_cv
           deallocate (b)
 
           ! regression without slope
@@ -837,14 +862,18 @@ subroutine estimate_forcing_regression (gen_sta_weights, sta_weight_name, x, z, 
 
           tmean_2 (g, t) = real (dot_product(z(g, 1:4), b), kind(sp))
 
-          errsum = 0.0
-          wgtsum = 0.0
-          do i = 1, (close_count_t(g)-1), 1
-            wgtsum = wgtsum + w_temp_red (i, i)
-            !errsum = errsum + (w_temp_red(i, i)*(tmean_2(g, t)-y_tmean_red(i))**2)
-            errsum = errsum + (w_temp_red(i, i)*(real (dot_product(x_red_t(i, 1:4), b), kind(sp))-y_tmean_red(i))**2) !Hongli
-          end do
-          tmean_err_2 (g, t) = real ((errsum/wgtsum)**(1.0/2.0), kind(sp))
+          !errsum = 0.0
+          !wgtsum = 0.0
+          !do i = 1, (close_count_t(g)-1), 1
+          !  wgtsum = wgtsum + w_temp_red (i, i)
+          !  !errsum = errsum + (w_temp_red(i, i)*(tmean_2(g, t)-y_tmean_red(i))**2)
+          !  errsum = errsum + (w_temp_red(i, i)*(real (dot_product(x_red_t(i, 1:4), b), kind(sp))-y_tmean_red(i))**2) !Hongli
+          !end do
+          !tmean_err_2 (g, t) = real ((errsum/wgtsum)**(1.0/2.0), kind(sp))
+          
+          !Hongli add
+          call cross_validation(x_red_t(:, 1:4), y_tmean_red, w_temp_red, err_cv)
+          tmean_err_2 (g, t) = err_cv
           deallocate (b)
 
           ! ===== NOW do TRANGE ============
@@ -863,14 +892,18 @@ subroutine estimate_forcing_regression (gen_sta_weights, sta_weight_name, x, z, 
 
           trange (g, t) = real (dot_product(z(g, :), b), kind(sp))
 
-          errsum = 0.0
-          wgtsum = 0.0
-          do i = 1, (close_count_t(g)-1), 1
-            wgtsum = wgtsum + w_temp_red (i, i)
-            !errsum = errsum + (w_temp_red(i, i)*(trange(g, t)-y_trange_red(i))**2)
-            errsum = errsum + (w_temp_red(i, i)*(real (dot_product(x_red_t(i, :), b), kind(sp))-y_trange_red(i))**2) !Hongli
-          end do
-          trange_err (g, t) = real ((errsum/wgtsum)**(1.0/2.0), kind(sp))
+          !errsum = 0.0
+          !wgtsum = 0.0
+          !do i = 1, (close_count_t(g)-1), 1
+          !  wgtsum = wgtsum + w_temp_red (i, i)
+          !  !errsum = errsum + (w_temp_red(i, i)*(trange(g, t)-y_trange_red(i))**2)
+          !  errsum = errsum + (w_temp_red(i, i)*(real (dot_product(x_red_t(i, :), b), kind(sp))-y_trange_red(i))**2) !Hongli
+          !end do
+          !trange_err (g, t) = real ((errsum/wgtsum)**(1.0/2.0), kind(sp))
+          
+          !Hongli add
+          call cross_validation(x_red_t, y_trange_red, w_temp_red, err_cv)
+          trange_err (g, t) = err_cv
           deallocate (b)
 
           ! --- regression without slope ---
@@ -887,15 +920,19 @@ subroutine estimate_forcing_regression (gen_sta_weights, sta_weight_name, x, z, 
 
           trange_2 (g, t) = real (dot_product(z(g, 1:4), b), kind(sp))
 
-          errsum = 0.0
-          wgtsum = 0.0
-          do i = 1, (close_count_t(g)-1), 1
-            wgtsum = wgtsum + w_temp_red (i, i)
-            sta_temp = real (dot_product(x_red_t(i, 1:4), b), kind(sp))
-            !errsum = errsum + (w_temp_red(i, i)*(trange_2(g, t)-y_trange_red(i))**2)
-            errsum = errsum + (w_temp_red(i, i)*(real (dot_product(x_red_t(i, 1:4), b), kind(sp))-y_trange_red(i))**2) !Hongli
-          end do
-          trange_err_2 (g, t) = real ((errsum/wgtsum)**(1.0/2.0), kind(sp))
+          !errsum = 0.0
+          !wgtsum = 0.0
+          !do i = 1, (close_count_t(g)-1), 1
+          !  wgtsum = wgtsum + w_temp_red (i, i)
+          !  sta_temp = real (dot_product(x_red_t(i, 1:4), b), kind(sp))
+          !  !errsum = errsum + (w_temp_red(i, i)*(trange_2(g, t)-y_trange_red(i))**2)
+          !  errsum = errsum + (w_temp_red(i, i)*(real (dot_product(x_red_t(i, 1:4), b), kind(sp))-y_trange_red(i))**2) !Hongli
+          !end do
+          !trange_err_2 (g, t) = real ((errsum/wgtsum)**(1.0/2.0), kind(sp))
+          
+          !Hongli add
+          call cross_validation(x_red_t(:, 1:4), y_trange_red, w_temp_red, err_cv)
+          trange_err_2 (g, t) = err_cv
           deallocate (b)  !AWW-seems to be missing
 
         else ! alternative to having (ndata_t <= 1)
